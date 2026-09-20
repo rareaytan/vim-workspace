@@ -1,0 +1,308 @@
+#!/usr/bin/env python3
+
+"""Implements `!p ` interpolation."""
+
+# We'll end up compiling the global snippets for every snippet so
+# caching compile() should pay off
+from functools import cache
+from pathlib import Path
+from typing import NamedTuple
+
+import UltiSnips.snippet_manager
+from UltiSnips import vim_helper
+from UltiSnips.indent_util import IndentUtil
+from UltiSnips.text_objects.base import NoneditableTextObject
+from UltiSnips.vim_state import _Placeholder
+
+
+@cache
+def cached_compile(*args):
+    return compile(*args)
+
+
+class _Tabs:
+    """Allows access to tabstop content via t[] inside of python code."""
+
+    def __init__(self, to, buf):
+        self._to = to
+        self._buf = buf
+
+    def __getitem__(self, no):
+        ts = self._to._get_tabstop(self._to, int(no))
+        if ts is None:
+            return ""
+        return ts.current_text
+
+    def __setitem__(self, no, value):
+        ts = self._to._get_tabstop(self._to, int(no))
+        if ts is None:
+            return
+        ts.overwrite(self._buf, value)
+
+
+class _VisualContent(NamedTuple):
+    mode: str
+    text: str
+
+
+class SnippetUtilForAction(dict):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.__dict__ = self
+
+    def expand_anon(self, *args, **kwargs):
+        UltiSnips.snippet_manager.UltiSnips_Manager.expand_anon(*args, **kwargs)
+        self.cursor.preserve()
+
+
+class SnippetUtil:
+    """Provides easy access to indentation, etc.
+
+    This is the 'snip' object in python code.
+
+    """
+
+    def __init__(self, initial_indent, vmode, vtext, context, parent):
+        self._ind = IndentUtil()
+        self._visual = _VisualContent(vmode, vtext)
+        self._initial_indent = self._ind.indent_to_spaces(initial_indent)
+        self._reset("")
+        self._context = context
+        self._start = parent.start
+        self._end = parent.end
+        self._parent = parent
+
+    def _reset(self, cur):
+        """Gets the snippet ready for another update.
+
+        :cur: the new value for c.
+
+        """
+        self._ind.reset()
+        self._cur = cur
+        self._rv = ""
+        self._changed = False
+        self._mkline_seen_first = False
+        self.reset_indent()
+
+    def shift(self, amount=1):
+        """Shifts the indentation level. Note that this uses the shiftwidth
+        because thats what code formatters use.
+
+        :amount: the amount by which to shift.
+
+        """
+        self.indent += " " * self._ind.shiftwidth * amount
+
+    def unshift(self, amount=1):
+        """Unshift the indentation level. Note that this uses the shiftwidth
+        because thats what code formatters use.
+
+        :amount: the amount by which to unshift.
+
+        """
+        by = -self._ind.shiftwidth * amount
+        try:
+            self.indent = self.indent[:by]
+        except IndexError:
+            self.indent = ""
+
+    def mkline(self, line="", indent=None):
+        """Creates a properly set up line.
+
+        :line: the text to add
+        :indent: the indentation to have at the beginning
+                 if None, it uses the default amount
+
+        """
+        if indent is None:
+            indent = self.indent
+            # The first line emitted by mkline shares the buffer position
+            # where the snippet expansion landed, which already provides
+            # the snippet's initial indent. Subsequent lines start on a
+            # fresh line and need the full indent prepended.
+            #
+            # `snip.rv` is the historical signal for "we have already
+            # emitted something", but only `snip +=` / explicit
+            # `snip.rv += mkline(...)` updates it between calls. Users
+            # who build the result in a single expression
+            # (`snip.rv = mkline(...) + "\n" + mkline(...)`,
+            # `"\n".join(snip.mkline(x) for x in ...)`) leave `rv` empty
+            # until the end, so every mkline call used to under-indent.
+            # Track our own call counter so the second-and-later mkline
+            # within a python block keeps the full indent regardless of
+            # how the user is assembling the result.
+            first_line = "\n" not in self._rv and not self._mkline_seen_first
+            self._mkline_seen_first = True
+            if first_line:
+                try:
+                    indent = indent[len(self._initial_indent) :]
+                except IndexError:
+                    indent = ""
+            indent = self._ind.spaces_to_indent(indent)
+
+        return indent + line
+
+    def reset_indent(self):
+        """Clears the indentation."""
+        self.indent = self._initial_indent
+
+    # Utility methods
+    @property
+    def fn(self):
+        """The filename."""
+        return vim_helper.eval('expand("%:t")') or ""
+
+    @property
+    def basename(self):
+        """The filename without extension."""
+        return vim_helper.eval('expand("%:t:r")') or ""
+
+    @property
+    def ft(self):
+        """The filetype."""
+        return self.opt("&filetype", "")
+
+    @property
+    def rv(self):
+        """The return value.
+
+        The text to insert at the location of the placeholder.
+
+        """
+        return self._rv
+
+    @rv.setter
+    def rv(self, value):
+        """See getter."""
+        self._changed = True
+        self._rv = value
+
+    @property
+    def _rv_changed(self):
+        """True if rv has changed."""
+        return self._changed
+
+    @property
+    def c(self):
+        """The current text of the placeholder."""
+        return self._cur
+
+    @property
+    def v(self):
+        """Content of visual expansions."""
+        return self._visual
+
+    @property
+    def p(self):
+        if self._parent.current_placeholder:
+            return self._parent.current_placeholder
+        return _Placeholder("", 0, 0)
+
+    @property
+    def context(self):
+        return self._context
+
+    def opt(self, option, default=None):
+        """Gets a Vim variable."""
+        if vim_helper.eval(f"exists('{option}')") == "1":
+            try:
+                return vim_helper.eval(option)
+            except vim_helper.error:
+                pass
+        return default
+
+    def __add__(self, value):
+        """Appends the given line to rv using mkline."""
+        self.rv += "\n"
+        self.rv += self.mkline(value)
+        return self
+
+    def __lshift__(self, other):
+        """Same as unshift."""
+        self.unshift(other)
+
+    def __rshift__(self, other):
+        """Same as shift."""
+        self.shift(other)
+
+    @property
+    def snippet_start(self):
+        """
+        Returns start of the snippet in format (line, column).
+        """
+        return self._start
+
+    @property
+    def snippet_end(self):
+        """
+        Returns end of the snippet in format (line, column).
+        """
+        return self._end
+
+    @property
+    def buffer(self):
+        return vim_helper.buf
+
+
+class PythonCode(NoneditableTextObject):
+    """See module docstring."""
+
+    def __init__(self, parent, token):
+
+        # Find our containing snippet for snippet local data
+        snippet = parent
+        while snippet:
+            try:
+                self._locals = snippet.locals
+                text = snippet.visual_content.text
+                mode = snippet.visual_content.mode
+                context = snippet.context
+                break
+            except AttributeError:
+                snippet = snippet._parent
+        self._snip = SnippetUtil(token.indent, mode, text, context, snippet)
+
+        self._codes = (
+            "import re, os, vim, string, random\n"
+            + "\n".join(snippet.globals.get("!p", [])).replace("\r\n", "\n"),
+            token.code.replace("\\`", "`"),
+        )
+        self._compiled_codes = (
+            snippet._compiled_globals
+            or cached_compile(self._codes[0], "<exec-globals>", "exec"),
+            cached_compile(
+                token.code.replace("\\`", "`"), "<exec-interpolation-code>", "exec"
+            ),
+        )
+
+        super().__init__(parent, token.start, token.end, token.initial_text)
+
+    def _update(self, done, buf):
+        path = vim_helper.eval('expand("%")') or ""
+        ct = self.current_text
+        self._locals.update(
+            {
+                "t": _Tabs(self._parent, buf),
+                "fn": Path(path).name,
+                "path": path,
+                "cur": ct,
+                "res": ct,
+                "snip": self._snip,
+            }
+        )
+        self._snip._reset(ct)
+
+        for code, compiled_code in zip(self._codes, self._compiled_codes, strict=True):
+            try:
+                exec(compiled_code, self._locals)
+            except Exception as exception:
+                exception.snippet_code = code
+                raise
+
+        rv = str(self._snip.rv if self._snip._rv_changed else self._locals["res"])
+
+        if ct != rv:
+            self.overwrite(buf, rv)
+            return False
+        return True

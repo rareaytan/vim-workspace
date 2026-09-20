@@ -1,0 +1,93 @@
+{
+  "checked_on": "2026-09-20",
+  "plugins": [
+    {
+      "name": "bufferhint",
+      "repo": "bsdelf/bufferhint",
+      "sha": "ab8d0a3e6f03b2f500177337201906dd3e4446b2",
+      "date": "2017-07-17T07:56:22Z"
+    },
+    {
+      "name": "ctrlp",
+      "repo": "ctrlpvim/ctrlp.vim",
+      "sha": "0065942ef13ce28293e2b26cb622d035da050b44",
+      "date": "2026-07-25T17:37:37Z"
+    },
+    {
+      "name": "delimitMate-2.7",
+      "repo": "Raimondi/delimitMate",
+      "sha": "becbd2d353a2366171852387288ebb4b33a02487",
+      "date": "2024-08-06T06:02:38Z"
+    },
+    {
+      "name": "nerdtree",
+      "repo": "preservim/nerdtree",
+      "sha": "690d061b591525890f1471c6675bcb5bdc8cdff9",
+      "date": "2025-09-26T16:07:39Z"
+    },
+    {
+      "name": "rainbow_parentheses.vim-master",
+      "repo": "kien/rainbow_parentheses.vim",
+      "sha": "eb8baa5428bde10ecc1cb14eed1d6e16f5f24695",
+      "date": "2013-03-05T03:47:46Z"
+    },
+    {
+      "name": "rust.vim",
+      "repo": "rust-lang/rust.vim",
+      "sha": "889b9a7515db477f4cb6808bef1769e53493c578",
+      "date": "2022-11-27T14:26:22Z"
+    },
+    {
+      "name": "supertab",
+      "repo": "ervandew/supertab",
+      "sha": "8705ae0e43b34339c06328fa6dab24ecaf21aab6",
+      "date": "2025-04-26T14:32:48Z"
+    },
+    {
+      "name": "taglist",
+      "repo": "yegappan/taglist",
+      "sha": "a48f3b1dcab9996bd65933d2a9ab32b2e12ffd96",
+      "date": "2025-12-07T16:54:19Z"
+    },
+    {
+      "name": "ultisnips-master",
+      "repo": "SirVer/ultisnips",
+      "sha": "0ca6a21386021e74a91034365809dcca56ed13f0",
+      "date": "2026-09-06T11:29:08Z"
+    },
+    {
+      "name": "vim-easy-align-master",
+      "repo": "junegunn/vim-easy-align",
+      "sha": "9815a55dbcd817784458df7a18acacc6f82b1241",
+      "date": "2024-04-13T03:21:42Z"
+    },
+    {
+      "name": "vim-easymotion-3.0.1",
+      "repo": "easymotion/vim-easymotion",
+      "sha": "b3cfab2a6302b3b39f53d9fd2cd997e1127d7878",
+      "date": "2022-04-04T09:27:07Z"
+    },
+    {
+      "name": "vim-multiple-cursors-master",
+      "repo": "terryma/vim-multiple-cursors",
+      "sha": "6456718e1d30b42c04b920c5413ca44f68f08759",
+      "date": "2020-07-30T19:44:08Z"
+    },
+    {
+      "name": "vim-snippets-master",
+      "repo": "honza/vim-snippets",
+      "sha": "ededcf7581962ee616cadab360d5966f3307f11a",
+      "date": "2025-10-28T14:00:35Z"
+    },
+    {
+      "name": "pathogen",
+      "repo": "tpope/vim-pathogen",
+      "sha": "ac4dd9494fa9008754e49dff85bff1b5746c89b4",
+      "date": "2022-08-24T17:21:07Z"
+    }
+  ],
+  "retained": [
+    "cscope_maps",
+    "visualmark"
+  ]
+}

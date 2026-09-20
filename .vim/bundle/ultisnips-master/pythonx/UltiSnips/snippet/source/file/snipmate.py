@@ -1,0 +1,161 @@
+#!/usr/bin/env python3
+
+"""Parses snipMate files."""
+
+import os
+from pathlib import Path
+
+from UltiSnips import vim_helper
+from UltiSnips.snippet.definition import SnipMateSnippetDefinition
+from UltiSnips.snippet.source.file.base import SnippetFileSource
+from UltiSnips.snippet.source.file.common import (
+    expand_runtimepath_entry,
+    handle_extends,
+    normalize_file_path,
+)
+from UltiSnips.text import LineIterator, head_tail
+
+
+def _splitall(path):
+    """Split 'path' into all its components."""
+    return list(Path(path).parts)
+
+
+def _snipmate_files_for(ft):
+    """Returns all snipMate files we need to look at for 'ft'."""
+    if ft == "all":
+        ft = "_"
+    patterns = [
+        f"{ft}.snippets",
+        str(Path(ft) / "*.snippets"),
+        str(Path(ft) / "*.snippet"),
+        str(Path(ft) / "*" / "*.snippet"),
+    ]
+    ret = set()
+    for rtp in vim_helper.eval("&runtimepath").split(","):
+        # Honour wildcards in the runtimepath entry like the UltiSnips
+        # directories do, and skip entries without a snippets directory
+        # with a single existence check instead of one glob per pattern.
+        for path in expand_runtimepath_entry(Path(rtp, "snippets").expanduser()):
+            for pattern in patterns:
+                for fn in path.glob(pattern):
+                    # Unlike glob.glob, Path.glob matches hidden files; skip
+                    # them so editor droppings are not parsed as snippets.
+                    if fn.name.startswith("."):
+                        continue
+                    ret.add(normalize_file_path(str(fn)))
+    return ret
+
+
+def _parse_snippet_file(content, full_filename):
+    """Parses 'content' assuming it is a .snippet file and yields events."""
+    filename = full_filename[: -len(".snippet")]  # strip extension
+    segments = _splitall(filename)
+    segments = segments[segments.index("snippets") + 1 :]
+    assert len(segments) in (2, 3)
+
+    trigger = segments[1]
+    description = segments[2] if len(segments) > 2 else ""
+
+    # Chomp \n if any.
+    if content and content.endswith(os.linesep):
+        content = content[: -len(os.linesep)]
+    yield (
+        "snippet",
+        (SnipMateSnippetDefinition(trigger, content, description, full_filename),),
+    )
+
+
+def _parse_snippet(line, lines, filename):
+    """Parse a snippet definition."""
+    start_line_index = lines.line_index
+    trigger, description = head_tail(line[len("snippet") :].lstrip())
+    content = ""
+    while True:
+        next_line = lines.peek()
+        if next_line is None:
+            break
+        if next_line.strip() and not next_line.startswith("\t"):
+            break
+        line = next(lines)
+        if line[0] == "\t":
+            line = line[1:]
+        content += line
+    content = content[:-1]  # Chomp the last newline
+    return (
+        "snippet",
+        (
+            SnipMateSnippetDefinition(
+                trigger, content, description, f"{filename}:{start_line_index}"
+            ),
+        ),
+    )
+
+
+# Directives that only exist in UltiSnips files. When we see one of these at
+# the top level of a snipMate file the user almost certainly placed an
+# UltiSnips-format file into a 'snippets/' directory. Several closed issues
+# (#233, #828, #1214, #1387, #1489) trace back to this confusion.
+_ULTISNIPS_DIRECTIVES = frozenset(
+    {
+        "endsnippet",
+        "global",
+        "priority",
+        "pre_expand",
+        "post_expand",
+        "post_jump",
+        "post_finish",
+        "clearsnippets",
+        "context",
+    }
+)
+
+
+def _parse_snippets_file(data, filename):
+    """Parse 'data' assuming it is a .snippets file.
+
+    Yields events in the file.
+
+    """
+    lines = LineIterator(data)
+    for line in lines:
+        if not line.strip():
+            continue
+
+        head, tail = head_tail(line)
+        if head == "extends":
+            yield handle_extends(tail, lines.line_index)
+        elif head == "snippet":
+            snippet = _parse_snippet(line, lines, filename)
+            if snippet is not None:
+                yield snippet
+        elif head in _ULTISNIPS_DIRECTIVES:
+            yield (
+                "error",
+                (
+                    f"{head!r} is UltiSnips syntax, but this file lives in a "
+                    "'snippets/' directory which is reserved for snipMate. "
+                    "Move the file to a directory named 'UltiSnips' (see "
+                    ":help g:UltiSnipsSnippetDirectories) or set "
+                    "'g:UltiSnipsEnableSnipMate = 0' to stop loading snipMate "
+                    "snippets",
+                    lines.line_index,
+                ),
+            )
+        elif head and not head.startswith("#"):
+            yield "error", (f"Invalid line {line.rstrip()!r}", lines.line_index)
+
+
+class SnipMateFileSource(SnippetFileSource):
+    """Manages all snipMate snippet definitions found in rtp."""
+
+    def get_all_snippet_files_for(self, ft):
+        return _snipmate_files_for(ft)
+
+    def _parse_snippet_file(self, filedata, filename):
+        if filename.lower().endswith("snippet"):
+            for event, data in _parse_snippet_file(filedata, filename):
+                yield event, data
+        else:
+            for event, data in _parse_snippets_file(filedata, filename):
+                yield event, data

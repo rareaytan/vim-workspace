@@ -1,0 +1,17 @@
+#!/usr/bin/env python3
+
+"""See module comment."""
+
+from UltiSnips.text_objects.base import NoneditableTextObject
+
+
+class EscapedChar(NoneditableTextObject):
+    r"""
+    This class is an escape char like \$. It is handled in a text object to make
+    sure that siblings are correctly moved after replacing the text.
+
+    This is a base class without functionality just to mark it in the code.
+    """
+
+    def __init__(self, parent, token):
+        super().__init__(parent, token.start, token.end, token.initial_text)

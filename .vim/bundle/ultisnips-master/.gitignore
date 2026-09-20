@@ -1,0 +1,9 @@
+__pycache__/
+.claude/
+.venv/
+*.egg-info/
+*.pyc
+*.swp
+/.mypy_cache/
+doc/tags
+watcher.lua

@@ -1,0 +1,28 @@
+#!/usr/bin/env python3
+
+"""A snipMate snippet after parsing."""
+
+from UltiSnips.snippet.definition.base import SnippetDefinition
+from UltiSnips.snippet.parsing.snipmate import parse_and_instantiate
+
+
+class SnipMateSnippetDefinition(SnippetDefinition):
+    """See module doc."""
+
+    SNIPMATE_SNIPPET_PRIORITY = -1000
+
+    def __init__(self, trigger, value, description, location):
+        super().__init__(
+            self.SNIPMATE_SNIPPET_PRIORITY,
+            trigger,
+            value,
+            description,
+            "w",
+            {},
+            location,
+            None,
+            {},
+        )
+
+    def instantiate(self, snippet_instance, initial_text, indent):
+        parse_and_instantiate(snippet_instance, initial_text, indent)
